@@ -408,7 +408,12 @@ if [ -n "${url}" ]; then
     finalize
     exit 1
   fi
-  output="$(get_output "${station_id}" "${fromtime}" "${totime}" "${prog}")"
+  if [ -z "${output}" ]; then
+    output="$(get_output "${station_id}" "${fromtime}" "${totime}" "${prog}")"
+  fi
+  if [ -z "${description}" ]; then
+    description="${prog}"
+  fi
 fi
 
 # Convert to UNIX time
