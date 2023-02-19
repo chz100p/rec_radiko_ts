@@ -346,6 +346,40 @@ while getopts s:f:t:d:m:D:u:p:o:v: option; do
   esac
 done
 
+youbi_tbl[0]="日"
+youbi_tbl[1]="月"
+youbi_tbl[2]="火"
+youbi_tbl[3]="水"
+youbi_tbl[4]="木"
+youbi_tbl[5]="金"
+youbi_tbl[6]="土"
+
+get_youbi() {
+  local y=$1 m=$2 d=$3
+  (( $m < 3 )) && (( y=$y - 1 )) && (( m=$m + 12 ))
+  echo $(( ( $y + $y / 4 - $y / 100 + $y / 400 + ( ( 13 * $m + 8 ) / 5 ) + $d ) % 7 ))
+}
+
+get_youbi_str_ja() {
+  local youbi=$1
+  echo "${youbi_tbl[$youbi]}"
+}
+
+get_totime() {
+  local prog="$1"
+  echo "${prog}" | xmllint --xpath "/prog/@to" - | sed -n 's/^[ ]\{0,\}to=["'']\{0,\}\([0-9]\{14,14\}\)["'']\{0,\}$/\1/p' | cut -c 1-12
+}
+
+get_output() {
+  local station_id="$1" fromtime="$2" totime="$3" prog="$4"
+  local y m d m_str d_str youbi_str
+  (( y=10#${fromtime:0:4} ))
+  (( m=10#${fromtime:4:2} )) ; m_str="${m}"
+  (( d=10#${fromtime:6:2} )) ; d_str="${d}"
+  youbi_str="$(get_youbi_str_ja $(get_youbi ${y} ${m} ${d}))"
+  echo "${prog}" | xmllint --xpath "concat('${station_id}_${fromtime}_${totime} ',/prog/title/text(),' 出演者 : ',/prog/pfm/text(),' ${m_str}月${d_str}日（${youbi_str}） ${fromtime:8:2}:${fromtime:10:2}-${totime:8:2}:${totime:10:2}.m4a')" -
+}
+
 # Get program infomation from URL (-u option)
 if [ -n "${url}" ]; then
   # Extract station ID and record start datetime
@@ -359,15 +393,22 @@ if [ -n "${url}" ]; then
   fi
 
   # Extract record end datetime
-  totime=$(curl --silent "http://radiko.jp/v3/program/station/weekly/${station_id}.xml" \
-    | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']/@to" - \
-    | sed -n 's/^[ ]\{0,\}to=["'']\{0,\}\([0-9]\{14,14\}\)["'']\{0,\}$/\1/p' \
-    | cut -c 1-12)
-  if [ -z "${totime}" ]; then
-    echo "Parse URL failed" >&2
+  prog="$(curl --silent "http://radiko.jp/v3/program/station/weekly/${station_id}.xml" \
+    | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']" - )"
+  if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
+  if [ -z "${prog}" ]; then
+    echo "Parse URL failed: prog" >&2
     finalize
     exit 1
   fi
+  totime="$(get_totime "${prog}")"
+  if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
+  if [ -z "${totime}" ]; then
+    echo "Parse URL failed: totime" >&2
+    finalize
+    exit 1
+  fi
+  output="$(get_output "${station_id}" "${fromtime}" "${totime}" "${prog}")"
 fi
 
 # Convert to UNIX time
@@ -501,11 +542,19 @@ else
 fi
 
 # Record
-command="ffmpeg -loglevel error -fflags +discardcorrupt -headers "'"'"X-Radiko-Authtoken: ${authtoken}"'"'" -i "'"'"https://radiko.jp/v2/api/ts/playlist.m3u8?station_id=${station_id}&l=15&ft=${fromtime}00&to=${totime}00"'"'
-if [[ "${description}" != "" ]] ; then command+=" -metadata "'"'"description=${description}"'"' ; fi
-command+=" -acodec copy -vn -bsf:a aac_adtstoasc -y "'"'"${output}"'"'
-if (( ${verbose} > 0 )) ; then echo "${command}" >&2 ; fi
-bash -c "${command}"
+command=( "ffmpeg" )
+command+=( "-loglevel" "error" )
+command+=( "-fflags" "+discardcorrupt" )
+command+=( "-headers" "X-Radiko-Authtoken: ${authtoken}" )
+command+=( "-i" "https://radiko.jp/v2/api/ts/playlist.m3u8?station_id=${station_id}&l=15&ft=${fromtime}00&to=${totime}00" )
+if [[ "${description}" != "" ]] ; then command+=( "-metadata" "description=${description}" ) ; fi
+command+=( "-acodec" "copy" )
+command+=( "-vn" )
+command+=( "-bsf:a" "aac_adtstoasc" )
+command+=( "-y" )
+command+=( "${output}" )
+if (( ${verbose} > 0 )) ; then echo "${command[@]}" >&2 ; fi
+"${command[@]}"
 ret=$?
 
 if [ ${ret} -ne 0 ]; then
@@ -517,3 +566,4 @@ fi
 # Finish
 finalize
 exit 0
+
