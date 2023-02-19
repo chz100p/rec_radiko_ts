@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/data/data/com.termux/files/usr/bin/sh
 #
 # Radiko timefree program recorder
 # Copyright (C) 2017-2019 uru (https://twitter.com/uru_2)
@@ -291,10 +291,12 @@ station_id=
 fromtime=
 totime=
 duration=
+description=
 url=
 mail=
 password=
 output=
+verbose=0
 
 # Argument none?
 if [ $# -lt 1 ]; then
@@ -304,7 +306,7 @@ if [ $# -lt 1 ]; then
 fi
 
 # Parse argument
-while getopts s:f:t:d:m:u:p:o: option; do
+while getopts s:f:t:d:m:D:u:p:o:v: option; do
   case "${option}" in
     s)
       station_id="${OPTARG}"
@@ -321,6 +323,9 @@ while getopts s:f:t:d:m:u:p:o: option; do
     m)
       mail="${OPTARG}"
       ;;
+    D)
+      description="${OPTARG}"
+      ;;
     u)
       url="${OPTARG}"
       ;;
@@ -329,6 +334,9 @@ while getopts s:f:t:d:m:u:p:o: option; do
       ;;
     o)
       output="${OPTARG}"
+      ;;
+    v)
+      verbose="${OPTARG}"
       ;;
     \?)
       show_usage
@@ -493,16 +501,11 @@ else
 fi
 
 # Record
-ffmpeg \
-    -loglevel error \
-    -fflags +discardcorrupt \
-    -headers "X-Radiko-Authtoken: ${authtoken}" \
-    -i "https://radiko.jp/v2/api/ts/playlist.m3u8?station_id=${station_id}&l=15&ft=${fromtime}00&to=${totime}00" \
-    -acodec copy \
-    -vn \
-    -bsf:a aac_adtstoasc \
-    -y \
-    "${output}"
+command="ffmpeg -loglevel error -fflags +discardcorrupt -headers "'"'"X-Radiko-Authtoken: ${authtoken}"'"'" -i "'"'"https://radiko.jp/v2/api/ts/playlist.m3u8?station_id=${station_id}&l=15&ft=${fromtime}00&to=${totime}00"'"'
+if [[ "${description}" != "" ]] ; then command+=" -metadata "'"'"description=${description}"'"' ; fi
+command+=" -acodec copy -vn -bsf:a aac_adtstoasc -y "'"'"${output}"'"'
+if (( ${verbose} > 0 )) ; then echo "${command}" >&2 ; fi
+bash -c "${command}"
 ret=$?
 
 if [ ${ret} -ne 0 ]; then
