@@ -560,6 +560,11 @@ command+=( "-bsf:a" "aac_adtstoasc" )
 command+=( "-y" )
 command+=( "${output}" )
 if (( ${verbose} > 0 )) ; then echo "${command[@]}" >&2 ; fi
+if [ -e "${output}" ] ; then
+  echo "Output file exist failed" >&2
+  finalize
+  exit 1
+fi
 "${command[@]}"
 ret=$?
 
