@@ -393,8 +393,21 @@ if [ -n "${url}" ]; then
   fi
 
   # Extract record end datetime
-  prog="$(curl --silent "http://radiko.jp/v3/program/station/weekly/${station_id}.xml" \
-    | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']" - )"
+  prog=
+  cache_progs_xml="${HOME}/.cache/rec_radiko_ts/${station_id}.xml"
+  if [ -e "${cache_progs_xml}" ]; then
+    prog="$(cat "${cache_progs_xml}" \
+      | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']" - )"
+  fi
+  if [ -z "${prog}" ]; then
+    cache_progs_dir="$(dirname "${cache_progs_xml}")"
+    if [ ! -d "${cache_progs_dir}" ]; then
+      mkdir -p "${cache_progs_dir}"
+    fi
+    curl --silent -L "http://radiko.jp/v3/program/station/weekly/${station_id}.xml" -o "${cache_progs_xml}"
+    prog="$(cat "${cache_progs_xml}" \
+      | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']" - )"
+  fi
   if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
   if [ -z "${prog}" ]; then
     echo "Parse URL failed: prog" >&2
