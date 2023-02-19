@@ -410,6 +410,7 @@ if [ -n "${url}" ]; then
   fi
   if [ -z "${output}" ]; then
     output="$(get_output "${station_id}" "${fromtime}" "${totime}" "${prog}")"
+    output="${output//\//／}"
   fi
   if [ -z "${description}" ]; then
     description="${prog}"
