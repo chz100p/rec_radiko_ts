@@ -411,6 +411,7 @@ if [ -n "${url}" ]; then
       cache_fetched=1
     fi
     cache_progs_srvtime="$(cat "${cache_progs_xml}" | xmllint --xpath "/radiko/srvtime/text()" - )"
+    if (( ${verbose} > 3 )) ; then echo "${cache_progs_srvtime}" >&2 ; fi
     if [ -z "${cache_progs_srvtime}" ]; then
       if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
       echo "Parse URL failed: srvtime" >&2
@@ -432,14 +433,14 @@ if [ -n "${url}" ]; then
       exit 1
     fi
     totime="$(get_totime "${prog}")"
-    if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
+    if (( ${verbose} > 3 )) ; then echo "${totime}" >&2 ; fi
     if [ -z "${totime}" ]; then
       if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
       echo "Parse URL failed: totime" >&2
       finalize
       exit 1
     fi
-    if (( ${totime} > $(date -d "@${cache_progs_srvtime}" +%Y%m%d%H%M%S) )); then
+    if (( ${totime} > $(date -d "@${cache_progs_srvtime}" +%Y%m%d%H%M) )); then
       if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
       echo "totime > srvtime failed:" >&2
       finalize
