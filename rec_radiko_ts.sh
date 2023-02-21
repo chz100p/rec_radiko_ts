@@ -394,33 +394,59 @@ if [ -n "${url}" ]; then
 
   # Extract record end datetime
   prog=
-  cache_progs_xml="${HOME}/.cache/rec_radiko_ts/${station_id}.xml"
-  if [ -e "${cache_progs_xml}" ]; then
-    prog="$(cat "${cache_progs_xml}" \
-      | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']" - )"
-  fi
-  if [ -z "${prog}" ]; then
-    cache_progs_dir="$(dirname "${cache_progs_xml}")"
-    if [ ! -d "${cache_progs_dir}" ]; then
-      mkdir -p "${cache_progs_dir}"
+  cache_progs_dir="${HOME}/.cache/rec_radiko_ts"
+  cache_progs_xml="${cache_progs_dir}/${station_id}.xml"
+  cache_fetched=0
+  while true ; do
+    if [ ! -e "${cache_progs_xml}" ]; then
+      if (( cache_fetched != 0 )); then
+        echo "Fetch progs failed:" >&2
+        finalize
+        exit 1
+      fi
+      if [ ! -d "${cache_progs_dir}" ]; then
+        mkdir -p "${cache_progs_dir}"
+      fi
+      curl --silent -L "http://radiko.jp/v3/program/station/weekly/${station_id}.xml" -o "${cache_progs_xml}"
+      cache_fetched=1
     fi
-    curl --silent -L "http://radiko.jp/v3/program/station/weekly/${station_id}.xml" -o "${cache_progs_xml}"
-    prog="$(cat "${cache_progs_xml}" \
-      | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']" - )"
-  fi
-  if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
-  if [ -z "${prog}" ]; then
-    echo "Parse URL failed: prog" >&2
-    finalize
-    exit 1
-  fi
-  totime="$(get_totime "${prog}")"
-  if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
-  if [ -z "${totime}" ]; then
-    echo "Parse URL failed: totime" >&2
-    finalize
-    exit 1
-  fi
+    cache_progs_srvtime="$(cat "${cache_progs_xml}" | xmllint --xpath "/radiko/srvtime/text()" - )"
+    if [ -z "${cache_progs_srvtime}" ]; then
+      if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
+      echo "Parse URL failed: srvtime" >&2
+      finalize
+      exit 1
+    fi
+    if (( ${cache_progs_srvtime} < $(date -d yesterday +%s) )); then
+      if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
+      echo "srvtime < yesterday failed:" >&2
+      finalize
+      exit 1
+    fi
+    prog="$(cat "${cache_progs_xml}" | xmllint --xpath "/radiko/stations/station[@id='${station_id}']/progs/prog[@ft='${ft}']" - )"
+    if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
+    if [ -z "${prog}" ]; then
+      if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
+      echo "Parse URL failed: prog" >&2
+      finalize
+      exit 1
+    fi
+    totime="$(get_totime "${prog}")"
+    if (( ${verbose} > 3 )) ; then echo "${prog}" >&2 ; fi
+    if [ -z "${totime}" ]; then
+      if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
+      echo "Parse URL failed: totime" >&2
+      finalize
+      exit 1
+    fi
+    if (( ${totime} > $(date -d "@${cache_progs_srvtime}" +%Y%m%d%H%M%S) )); then
+      if (( cache_fetched == 0 )); then rm -f "${cache_progs_xml}"; continue; fi
+      echo "totime > srvtime failed:" >&2
+      finalize
+      exit 1
+    fi
+    break
+  done
   if [ -z "${output}" ]; then
     output="$(get_output "${station_id}" "${fromtime}" "${totime}" "${prog}")"
     output="${output//\//／}"
